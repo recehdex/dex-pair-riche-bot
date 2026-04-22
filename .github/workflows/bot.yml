@@ -34,6 +34,16 @@ jobs:
         pip install --upgrade pip
         pip install -r requirements.txt
     
+    - name: Create cache directory
+      run: mkdir -p bot_cache
+    
+    - name: Download previous cache (if exists)
+      uses: actions/download-artifact@v4
+      with:
+        name: bot-cache
+        path: .
+      continue-on-error: true  # ← INI KUNCI UTAMA
+    
     - name: Run RecehDEX Bot
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
