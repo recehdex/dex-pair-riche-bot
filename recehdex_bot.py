@@ -189,7 +189,7 @@ async def main():
     
     message += "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     message += f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
-    message += "📊 Data RecehDEX jaringan Riche Chain"
+    message += "💰 Data RecehDEX jaringan RicheChain"
     
     # Tombol
     keyboard = [
