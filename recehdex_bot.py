@@ -1,11 +1,9 @@
 import asyncio
-import aiohttp
 from web3 import Web3
 from telegram import Bot
 from telegram.constants import ParseMode
 import logging
 from datetime import datetime
-from typing import Dict, Tuple
 import os
 import json
 
@@ -16,241 +14,181 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
     raise ValueError("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set")
 
-# Contract Addresses
+# Address
 USD_ADDRESS = "0x6dC1bC519a8c861d509351763a6f9aBb6B07b57B"
+WRIC_ADDRESS = "0xEa126036c94Ab6A384A25A70e29E2fE2D4a91e68"
 FACTORY_ADDRESS = "0xAeEdf8B9925c6316171f7c2815e387DE596Fa11B"
 
-# Multiple RPC endpoints (coba satu per satu)
-RPC_ENDPOINTS = [
-    "https://seed-richechain.com/",
-]
-
+RPC_URL = "https://seed-richechain.com:8586/"
 EXPLORER_URL = "https://richescan.com"
 DEX_URL = "https://dex.cryptoreceh.com/riche"
 BANNER_URL = "https://raw.githubusercontent.com/recehdex/images/refs/heads/main/recehdex-banner.png"
-CHAIN_ID = 132026
+
+w3 = Web3(Web3.HTTPProvider(RPC_URL))
 
 CACHE_FILE = "pairs_cache.json"
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ABIs (sama seperti sebelumnya)
-PAIR_ABI = [{"constant": True, "inputs": [], "name": "getReserves", "outputs": [{"name": "_reserve0", "type": "uint112"}, {"name": "_reserve1", "type": "uint112"}, {"name": "_blockTimestampLast", "type": "uint32"}], "type": "function"}, {"constant": True, "inputs": [], "name": "token0", "outputs": [{"name": "", "type": "address"}], "type": "function"}, {"constant": True, "inputs": [], "name": "token1", "outputs": [{"name": "", "type": "address"}], "type": "function"}, {"constant": True, "inputs": [], "name": "totalSupply", "outputs": [{"name": "", "type": "uint256"}], "type": "function"}]
-TOKEN_ABI = [{"constant": True, "inputs": [], "name": "symbol", "outputs": [{"name": "", "type": "string"}], "type": "function"}, {"constant": True, "inputs": [], "name": "decimals", "outputs": [{"name": "", "type": "uint8"}], "type": "function"}]
-FACTORY_ABI = [{"constant": True, "inputs": [], "name": "allPairsLength", "outputs": [{"name": "", "type": "uint256"}], "type": "function"}, {"constant": True, "inputs": [{"name": "", "type": "uint256"}], "name": "allPairs", "outputs": [{"name": "", "type": "address"}], "type": "function"}]
+# ABIs
+PAIR_ABI = [
+    {"constant": True, "inputs": [], "name": "getReserves", "outputs": [{"name": "_reserve0", "type": "uint112"}, {"name": "_reserve1", "type": "uint112"}, {"name": "_blockTimestampLast", "type": "uint32"}], "type": "function"},
+    {"constant": True, "inputs": [], "name": "token0", "outputs": [{"name": "", "type": "address"}], "type": "function"},
+    {"constant": True, "inputs": [], "name": "token1", "outputs": [{"name": "", "type": "address"}], "type": "function"},
+    {"constant": True, "inputs": [], "name": "totalSupply", "outputs": [{"name": "", "type": "uint256"}], "type": "function"}
+]
 
-def get_web3_connection():
-    """Try multiple RPC endpoints"""
-    for rpc in RPC_ENDPOINTS:
-        try:
-            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={'timeout': 10}))
-            if w3.is_connected():
-                logger.info(f"Connected to Riche Chain via {rpc}")
-                return w3, rpc
-        except Exception as e:
-            logger.warning(f"Failed to connect to {rpc}: {e}")
-    return None, None
+TOKEN_ABI = [
+    {"constant": True, "inputs": [], "name": "symbol", "outputs": [{"name": "", "type": "string"}], "type": "function"},
+    {"constant": True, "inputs": [], "name": "decimals", "outputs": [{"name": "", "type": "uint8"}], "type": "function"}
+]
 
-def get_token_info(w3, token_address: str) -> Tuple[str, int]:
+FACTORY_ABI = [
+    {"constant": True, "inputs": [], "name": "allPairsLength", "outputs": [{"name": "", "type": "uint256"}], "type": "function"},
+    {"constant": True, "inputs": [{"name": "", "type": "uint256"}], "name": "allPairs", "outputs": [{"name": "", "type": "address"}], "type": "function"}
+]
+
+def get_token_info(token_address):
     try:
-        token_contract = w3.eth.contract(address=Web3.to_checksum_address(token_address), abi=TOKEN_ABI)
-        symbol = token_contract.functions.symbol().call()
-        decimals = token_contract.functions.decimals().call()
-        return symbol, decimals
+        token = w3.eth.contract(address=Web3.to_checksum_address(token_address), abi=TOKEN_ABI)
+        return token.functions.symbol().call(), token.functions.decimals().call()
     except:
         return "Unknown", 18
 
-def get_pair_info(w3, pair_address: str) -> Dict:
-    try:
-        pair_contract = w3.eth.contract(address=Web3.to_checksum_address(pair_address), abi=PAIR_ABI)
-        
-        token0 = pair_contract.functions.token0().call()
-        token1 = pair_contract.functions.token1().call()
-        reserves = pair_contract.functions.getReserves().call()
-        reserve0 = reserves[0]
-        reserve1 = reserves[1]
-        total_supply = pair_contract.functions.totalSupply().call()
-        
-        token0_symbol, token0_decimals = get_token_info(w3, token0)
-        token1_symbol, token1_decimals = get_token_info(w3, token1)
-        
-        usd_reserve = 0
-        other_reserve = 0
-        other_symbol = ""
-        other_address = ""
-        
-        if token0.lower() == USD_ADDRESS.lower():
-            usd_reserve = reserve0 / (10 ** token0_decimals)
-            other_reserve = reserve1 / (10 ** token1_decimals)
-            other_symbol = token1_symbol
-            other_address = token1
-        elif token1.lower() == USD_ADDRESS.lower():
-            usd_reserve = reserve1 / (10 ** token1_decimals)
-            other_reserve = reserve0 / (10 ** token0_decimals)
-            other_symbol = token0_symbol
-            other_address = token0
-        
-        if usd_reserve == 0:
-            return None
-        
-        price = other_reserve / usd_reserve
-        total_liquidity_usd = usd_reserve * 2
-        
-        return {
-            "pair_address": pair_address,
-            "pair_name": f"{other_symbol}/USD",
-            "other_symbol": other_symbol,
-            "other_address": other_address,
-            "price": price,
-            "usd_reserve": usd_reserve,
-            "other_reserve": other_reserve,
-            "total_liquidity_usd": total_liquidity_usd,
-            "total_supply": total_supply / (10 ** 18),
-        }
-    except Exception as e:
-        logger.error(f"Error getting pair info: {e}")
-        return None
-
-def get_all_pairs(w3) -> Dict:
+def get_all_pairs():
+    """Ambil SEMUA pair dari factory, bukan cuma yang USD"""
     try:
         factory = w3.eth.contract(address=Web3.to_checksum_address(FACTORY_ADDRESS), abi=FACTORY_ABI)
-        pairs_count = factory.functions.allPairsLength().call()
-        logger.info(f"Total pairs in factory: {pairs_count}")
+        total_pairs = factory.functions.allPairsLength().call()
         
-        pairs = {}
-        for i in range(min(pairs_count, 200)):
+        pairs = []
+        for i in range(min(total_pairs, 100)):
             try:
                 pair_address = factory.functions.allPairs(i).call()
-                pair_info = get_pair_info(w3, pair_address)
-                if pair_info and pair_info['price'] > 0:
-                    pairs[pair_address] = pair_info
-            except:
+                pair_contract = w3.eth.contract(address=Web3.to_checksum_address(pair_address), abi=PAIR_ABI)
+                
+                token0 = pair_contract.functions.token0().call()
+                token1 = pair_contract.functions.token1().call()
+                reserves = pair_contract.functions.getReserves().call()
+                total_supply = pair_contract.functions.totalSupply().call()
+                
+                token0_symbol, token0_dec = get_token_info(token0)
+                token1_symbol, token1_dec = get_token_info(token1)
+                
+                reserve0 = reserves[0] / (10 ** token0_dec)
+                reserve1 = reserves[1] / (10 ** token1_dec)
+                lp_supply = total_supply / (10 ** 18)
+                
+                # Hitung harga dalam USD jika salah satu token adalah USD
+                price_usd = 0
+                if token0.lower() == USD_ADDRESS.lower():
+                    price_usd = reserve1 / reserve0 if reserve0 > 0 else 0
+                elif token1.lower() == USD_ADDRESS.lower():
+                    price_usd = reserve0 / reserve1 if reserve1 > 0 else 0
+                
+                # Total likuiditas dalam USD
+                liquidity_usd = 0
+                if token0.lower() == USD_ADDRESS.lower():
+                    liquidity_usd = reserve0 * 2
+                elif token1.lower() == USD_ADDRESS.lower():
+                    liquidity_usd = reserve1 * 2
+                else:
+                    # Jika pair tidak dengan USD, estimasi dengan WRIC
+                    if token0.lower() == WRIC_ADDRESS.lower():
+                        liquidity_usd = reserve0 * 1  # asumsi 1 WRIC = 1 USD
+                    elif token1.lower() == WRIC_ADDRESS.lower():
+                        liquidity_usd = reserve1 * 1
+                
+                pairs.append({
+                    "address": pair_address,
+                    "token0": {"symbol": token0_symbol, "reserve": reserve0, "address": token0},
+                    "token1": {"symbol": token1_symbol, "reserve": reserve1, "address": token1},
+                    "pair_name": f"{token0_symbol}/{token1_symbol}",
+                    "price_usd": price_usd,
+                    "liquidity_usd": liquidity_usd,
+                    "lp_supply": lp_supply
+                })
+            except Exception as e:
                 continue
+        
         return pairs
     except Exception as e:
-        logger.error(f"Error getting pairs: {e}")
-        return {}
+        logger.error(f"Error: {e}")
+        return []
 
-async def send_telegram_message(bot: Bot, message: str):
-    try:
-        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode=ParseMode.HTML, disable_web_page_preview=False)
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send: {e}")
-        return False
+def format_message(pairs):
+    """Format HTML dengan banner di ATAS dan desain bersih"""
+    
+    # Banner di awal (pake img src biar muncul di atas)
+    message = f'<img src="{BANNER_URL}" width="500" />\n\n'
+    message += "<b>🔥 RECEHDEX PAIR LIST</b>\n"
+    message += "<code>═══════════════════════════════</code>\n\n"
+    
+    for pair in pairs:
+        # Format harga
+        if pair["price_usd"] > 0:
+            if pair["price_usd"] < 0.000001:
+                price_str = f"${pair['price_usd']:.10f}"
+            elif pair["price_usd"] < 0.001:
+                price_str = f"${pair['price_usd']:.8f}"
+            else:
+                price_str = f"${pair['price_usd']:.4f}"
+        else:
+            price_str = "N/A"
+        
+        # Format likuiditas
+        if pair["liquidity_usd"] > 0:
+            liq_str = f"${pair['liquidity_usd']:,.0f}"
+        else:
+            liq_str = "N/A"
+        
+        message += f"<b>🪙 {pair['pair_name']}</b>\n"
+        message += f"   💰 Harga: <code>{price_str}</code>\n"
+        message += f"   💧 Likuiditas: <code>{liq_str}</code>\n"
+        message += f"   📦 LP Supply: <code>{pair['lp_supply']:,.0f}</code>\n"
+        
+        # Link explorer
+        message += f"   🔗 <a href='{EXPLORER_URL}/address/{pair['address']}'>Lihat Pair</a>\n\n"
+    
+    message += "<code>═══════════════════════════════</code>\n"
+    message += f"<i>🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC</i>"
+    
+    return message
 
 async def main():
-    logger.info("RecehDEX Bot Started")
+    logger.info("Starting...")
+    
+    if not w3.is_connected():
+        logger.error("Gak bisa konek ke Riche Chain")
+        return
     
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
     
-    # Kirim pesan status mencoba konek
-    trying_msg = f"""
-<a href="{BANNER_URL}">&#8205;</a>
-
-<b>🔄 RECEHDEX BOT - CONNECTING</b>
-
-<code>━━━━━━━━━━━━━━━━━━━━</code>
-
-<b>🔗 Target:</b> <code>Riche Chain (ID: {CHAIN_ID})</code>
-<b>📡 Status:</b> <code>Trying to connect...</code>
-
-<b>🌐 Trying RPC endpoints:</b>
-"""
-    for rpc in RPC_ENDPOINTS:
-        trying_msg += f"\n<code>  • {rpc}</code>"
-    
-    trying_msg += "\n\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n<i>⚡ Attempting connection...</i>"
-    await send_telegram_message(bot, trying_msg)
-    
-    # Coba konek
-    w3, connected_rpc = get_web3_connection()
-    
-    if not w3 or not w3.is_connected():
-        error_msg = f"""
-<a href="{BANNER_URL}">&#8205;</a>
-
-<b>❌ CONNECTION FAILED</b>
-
-<code>━━━━━━━━━━━━━━━━━━━━</code>
-
-<b>🔗 Network:</b> <code>Riche Chain</code>
-<b>📡 Status:</b> <code>Disconnected</code>
-
-<b>⚠️ All RPC endpoints failed</b>
-<b>🔄 Possible issues:</b>
-<code>  • RPC endpoint is down</code>
-<code>  • Network firewall blocks access</code>
-<code>  • Invalid RPC URL</code>
-
-<b>💡 Action required:</b>
-<code>  Update RPC_ENDPOINTS in code</code>
-
-<code>━━━━━━━━━━━━━━━━━━━━</code>
-<i>⚡ Bot will retry on next schedule</i>
-"""
-        await send_telegram_message(bot, error_msg)
-        return
-    
-    # Sukses konek
-    success_msg = f"""
-<a href="{BANNER_URL}">&#8205;</a>
-
-<b>✅ RECEHDEX BOT ONLINE</b>
-
-<code>━━━━━━━━━━━━━━━━━━━━</code>
-
-<b>🔗 Network:</b> <code>Riche Chain (ID: {CHAIN_ID})</code>
-<b>📡 Status:</b> <code>Connected ✅</code>
-<b>🌐 RPC:</b> <code>{connected_rpc}</code>
-<b>📦 Block:</b> <code>{w3.eth.block_number}</code>
-
-<b>🔍 Scanning for pairs...</b>
-
-<code>━━━━━━━━━━━━━━━━━━━━</code>
-<i>⚡ Bot is monitoring RecehDEX</i>
-"""
-    await send_telegram_message(bot, success_msg)
-    
-    # Cari pairs
-    pairs = get_all_pairs(w3)
+    # Ambil semua pair
+    pairs = get_all_pairs()
     
     if not pairs:
-        no_pair_msg = f"""
-<a href="{BANNER_URL}">&#8205;</a>
-
-<b>⚠️ NO PAIRS FOUND</b>
-
-<code>━━━━━━━━━━━━━━━━━━━━</code>
-
-<b>🔍 Factory:</b> <code>{FACTORY_ADDRESS}</code>
-<b>💵 USD:</b> <code>{USD_ADDRESS}</code>
-
-<b>❌ No active pairs with USD</b>
-
-<code>━━━━━━━━━━━━━━━━━━━━</code>
-<i>⚡ Waiting for pairs to be created</i>
-"""
-        await send_telegram_message(bot, no_pair_msg)
-    else:
-        summary = f"""
-<a href="{BANNER_URL}">&#8205;</a>
-
-<b>📊 PAIRS DETECTED</b>
-
-<code>━━━━━━━━━━━━━━━━━━━━</code>
-
-<b>✅ Active pairs:</b> <code>{len(pairs)}</code>
-
-<b>📈 Top 5 by liquidity:</b>
-"""
-        sorted_pairs = sorted(pairs.values(), key=lambda x: x['total_liquidity_usd'], reverse=True)[:5]
-        for p in sorted_pairs:
-            summary += f"\n<code>  • {p['pair_name']}: ${p['total_liquidity_usd']:,.0f}</code>"
-        
-        summary += "\n\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n<i>⚡ Detailed updates for price changes >5%</i>"
-        await send_telegram_message(bot, summary)
+        # Kirim pesan kalau kosong
+        msg = f'<img src="{BANNER_URL}" width="500" />\n\n'
+        msg += "<b>⚠️ TIDAK ADA PAIR</b>\n"
+        msg += "<code>═══════════════════════════════</code>\n"
+        msg += "\nBelum ada pair di RecehDEX\n"
+        msg += f"\n🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC"
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode=ParseMode.HTML)
+        return
+    
+    # Kirim pesan
+    message = format_message(pairs)
+    
+    # Kirim ke Telegram (banner udah include di dalam message)
+    await bot.send_message(
+        chat_id=TELEGRAM_CHAT_ID,
+        text=message,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=False
+    )
+    
+    logger.info(f"Berhasil kirim {len(pairs)} pair")
 
 if __name__ == "__main__":
     asyncio.run(main())
