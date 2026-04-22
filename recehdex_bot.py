@@ -22,9 +22,7 @@ FACTORY_ADDRESS = "0xAeEdf8B9925c6316171f7c2815e387DE596Fa11B"
 
 # Multiple RPC endpoints (coba satu per satu)
 RPC_ENDPOINTS = [
-    "https://seed-richechain.com:8586/",
-    "https://rpc.richescan.com/",
-    "https://richechain-rpc.vercel.app/",
+    "https://seed-richechain.com/",
 ]
 
 EXPLORER_URL = "https://richescan.com"
