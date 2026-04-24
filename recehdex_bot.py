@@ -16,8 +16,8 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
 
 # ================= ADDRESS =================
 FACTORY_ADDRESS = "0xAeEdf8B9925c6316171f7c2815e387DE596Fa11B"
-USD_ADDRESS = "0x6dC1bC519a8c861d509351763a6f9aBb6B07b57B"  # USDr
-WRIC_ADDRESS = "0xEa126036c94Ab6A384A25A70e29E2fE2D4a91e68"  # WRIC
+USD_ADDRESS = "0x6dC1bC519a8c861d509351763a6f9aBb6B07b57B"
+WRIC_ADDRESS = "0xEa126036c94Ab6A384A25A70e29E2fE2D4a91e68"
 
 RPC_URL = "https://seed-richechain.com"
 DEX_URL = "https://dex.cryptoreceh.com/riche"
@@ -60,7 +60,6 @@ def is_stable(token_address):
     return token_address.lower() in STABLE_ADDRESSES
 
 def get_stable_type(stable_address):
-    """Return 'USD' for USDr, 'WRIC' for WRIC"""
     if stable_address.lower() == USD_ADDRESS.lower():
         return "USD"
     elif stable_address.lower() == WRIC_ADDRESS.lower():
@@ -92,7 +91,6 @@ def get_top_3_pairs_with_stable():
                 if not (is_stable(token0) or is_stable(token1)):
                     continue
                 
-                # Tentukan mana stable dan mana token
                 if is_stable(token0):
                     stable_address = token0
                     stable_symbol = token0_symbol
@@ -108,7 +106,6 @@ def get_top_3_pairs_with_stable():
                     token_symbol = token0_symbol
                     token_reserve = reserve0_raw / (10 ** token0_dec)
                 
-                # Hitung harga (dalam stable coin)
                 if token_reserve > 0:
                     price_in_stable = stable_reserve / token_reserve
                 else:
@@ -125,8 +122,8 @@ def get_top_3_pairs_with_stable():
                         "token_address": token_address,
                         "stable_symbol": stable_symbol,
                         "stable_address": stable_address,
-                        "stable_type": stable_type,  # "USD" or "WRIC"
-                        "price": price_in_stable,   # Harga dalam stable coin (USD atau WRIC)
+                        "stable_type": stable_type,
+                        "price": price_in_stable,
                         "liquidity": liquidity_usd,
                         "token_reserve": token_reserve,
                         "stable_reserve": stable_reserve,
@@ -174,29 +171,24 @@ async def main():
     message += "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     for idx, pair in enumerate(top_pairs, 1):
-        # Format price dengan unit yang benar
+        # Format price
         price = pair['price']
-        stable_type = pair['stable_type']
-        
-        # Display price dengan unit yang sesuai
-        if stable_type == "USD":
-            price_unit = "$"
-        else:  # WRIC
-            price_unit = ""
         
         if price < 0.000001:
-            price_str = f"{price_unit}{price:.12f}"
+            price_str = f"{price:.12f}"
         elif price < 0.0001:
-            price_str = f"{price_unit}{price:.10f}"
+            price_str = f"{price:.10f}"
         elif price < 0.01:
-            price_str = f"{price_unit}{price:.8f}"
+            price_str = f"{price:.8f}"
         elif price < 1:
-            price_str = f"{price_unit}{price:.6f}"
+            price_str = f"{price:.6f}"
         else:
-            price_str = f"{price_unit}{price:.4f}"
+            price_str = f"{price:.4f}"
         
-        # Tambahkan satuan untuk WRIC
-        if stable_type == "WRIC":
+        # Tambahkan satuan di belakang
+        if pair['stable_type'] == "USD":
+            price_str = f"{price_str} USD"
+        else:
             price_str = f"{price_str} RIC"
         
         # Format liquidity
@@ -205,13 +197,14 @@ async def main():
         
         trade_url = f"{DEX_URL}?inputCurrency={pair['token_address']}&outputCurrency={pair['stable_address']}"
         
-        message += f"<b>{idx}. {pair['pair_name']}</b>\n"
+        # Alinea baru setelah nama pair
+        message += f"<b>{idx}. {pair['pair_name']}</b>\n\n"
         message += f"   💰 Price: <code>{price_str}</code>\n"
         message += f"   💧 Liquidity: <code>{liq_str}</code>\n"
         message += f"   🔗 <a href='{trade_url}'>Trade Now</a>\n\n"
     
-    message += "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    message += f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
+    message += "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    message += f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
     message += "💰 Data RecehDEX jaringan RicheChain"
     
     # Tombol
