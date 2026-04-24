@@ -1,12 +1,3 @@
-import asyncio
-from web3 import Web3
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
-import logging
-from datetime import datetime
-import os
-import requests
-
 # ================= KONFIGURASI =================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -59,6 +50,14 @@ def get_token_info(token_address):
 def is_stable(token_address):
     return token_address.lower() in STABLE_ADDRESSES
 
+def get_stable_type(stable_address):
+    """Return 'USD' for USDr, 'WRIC' for WRIC"""
+    if stable_address.lower() == USD_ADDRESS.lower():
+        return "USD"
+    elif stable_address.lower() == WRIC_ADDRESS.lower():
+        return "WRIC"
+    return "Unknown"
+
 def get_top_3_pairs_with_stable():
     try:
         factory = w3.eth.contract(address=Web3.to_checksum_address(FACTORY_ADDRESS), abi=FACTORY_ABI)
@@ -100,27 +99,30 @@ def get_top_3_pairs_with_stable():
                     token_symbol = token0_symbol
                     token_reserve = reserve0_raw / (10 ** token0_dec)
                 
-                # Harga = stable_reserve / token_reserve
+                # Hitung harga (dalam stable coin)
                 if token_reserve > 0:
-                    price = stable_reserve / token_reserve
+                    price_in_stable = stable_reserve / token_reserve
                 else:
-                    price = 0
+                    price_in_stable = 0
                 
                 liquidity_usd = stable_reserve * 2
                 
-                if liquidity_usd > 0.01 and price > 0:
+                if liquidity_usd > 0.01 and price_in_stable > 0:
+                    stable_type = get_stable_type(stable_address)
+                    
                     valid_pairs.append({
                         "pair_name": f"{token_symbol}/{stable_symbol}",
                         "token_symbol": token_symbol,
                         "token_address": token_address,
                         "stable_symbol": stable_symbol,
                         "stable_address": stable_address,
-                        "price": price,
+                        "stable_type": stable_type,  # "USD" or "WRIC"
+                        "price": price_in_stable,   # Harga dalam stable coin (USD atau WRIC)
                         "liquidity": liquidity_usd,
                         "token_reserve": token_reserve,
                         "stable_reserve": stable_reserve,
                     })
-                    logger.info(f"{token_symbol}/{stable_symbol}: price=${price:.8f}, liq=${liquidity_usd:.2f}")
+                    logger.info(f"{token_symbol}/{stable_symbol}: price={price_in_stable:.8f} {stable_type}, liq=${liquidity_usd:.2f}")
                     
             except Exception as e:
                 logger.error(f"Error pair {i}: {e}")
@@ -163,18 +165,30 @@ async def main():
     message += "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     for idx, pair in enumerate(top_pairs, 1):
-        # Format price
+        # Format price dengan unit yang benar
         price = pair['price']
+        stable_type = pair['stable_type']
+        
+        # Display price dengan unit yang sesuai
+        if stable_type == "USD":
+            price_unit = "$"
+        else:  # WRIC
+            price_unit = ""
+        
         if price < 0.000001:
-            price_str = f"${price:.12f}"
+            price_str = f"{price_unit}{price:.12f}"
         elif price < 0.0001:
-            price_str = f"${price:.10f}"
+            price_str = f"{price_unit}{price:.10f}"
         elif price < 0.01:
-            price_str = f"${price:.8f}"
+            price_str = f"{price_unit}{price:.8f}"
         elif price < 1:
-            price_str = f"${price:.6f}"
+            price_str = f"{price_unit}{price:.6f}"
         else:
-            price_str = f"${price:.4f}"
+            price_str = f"{price_unit}{price:.4f}"
+        
+        # Tambahkan satuan untuk WRIC
+        if stable_type == "WRIC":
+            price_str = f"{price_str} WRIC"
         
         # Format liquidity
         liq = pair['liquidity']
