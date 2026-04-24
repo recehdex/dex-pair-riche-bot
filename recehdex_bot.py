@@ -16,8 +16,8 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
 
 # ================= ADDRESS =================
 FACTORY_ADDRESS = "0xAeEdf8B9925c6316171f7c2815e387DE596Fa11B"
-USD_ADDRESS = "0x6dC1bC519a8c861d509351763a6f9aBb6B07b57B"  # USDr
-WRIC_ADDRESS = "0xEa126036c94Ab6A384A25A70e29E2fE2D4a91e68"  # WRIC
+USD_ADDRESS = "0x6dC1bC519a8c861d509351763a6f9aBb6B07b57B"
+WRIC_ADDRESS = "0xEa126036c94Ab6A384A25A70e29E2fE2D4a91e68"
 
 RPC_URL = "https://seed-richechain.com"
 DEX_URL = "https://dex.cryptoreceh.com/riche"
@@ -67,10 +67,10 @@ def get_stable_type(stable_address):
     return "Unknown"
 
 def format_number(num):
-    if num >= 1_000_000:
-        return f"{num/1_000_000:.2f}M"
-    elif num >= 1_000:
-        return f"{num/1_000:.2f}K"
+    if num >= 1000000:
+        return f"{num/1000000:.2f}M"
+    elif num >= 1000:
+        return f"{num/1000:.2f}K"
     else:
         return f"{num:.2f}"
 
@@ -158,30 +158,6 @@ async def get_banner():
         pass
     return None
 
-def format_price(price, stable_type):
-    if stable_type == "USD":
-        if price < 0.000001:
-            return f"${price:.12f}"
-        elif price < 0.0001:
-            return f"${price:.10f}"
-        elif price < 0.01:
-            return f"${price:.8f}"
-        elif price < 1:
-            return f"${price:.6f}"
-        else:
-            return f"${price:.4f}"
-    else:
-        if price < 0.000001:
-            return f"{price:.12f} WRIC"
-        elif price < 0.0001:
-            return f"{price:.10f} WRIC"
-        elif price < 0.01:
-            return f"{price:.8f} WRIC"
-        elif price < 1:
-            return f"{price:.6f} WRIC"
-        else:
-            return f"{price:.4f} WRIC"
-
 async def main():
     logger.info("=" * 50)
     logger.info("RecehDEX Bot - Top 3 Pairs")
@@ -198,49 +174,44 @@ async def main():
         await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="⚠️ No pairs found")
         return
     
-    # Build clean message
+    # Build COMPLETE and INFORMATIVE message
     message = "🏆 <b>RECEHDEX - TOP 3 PAIRS</b>\n"
     message += "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     for idx, pair in enumerate(top_pairs, 1):
-        # Medal
-        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(idx, "")
-        
-        # Format price
-        price_str = format_price(pair['price'], pair['stable_type'])
+        # Format price with correct unit
+        if pair['stable_type'] == "USD":
+            price_str = f"${pair['price']:.6f}"
+        else:
+            price_str = f"{pair['price']:.6f} WRIC"
         
         # Format liquidity
-        liq = pair['liquidity']
-        liq_str = f"${liq:,.2f}" if liq >= 1 else f"${liq:.2f}"
+        liq_str = f"${pair['liquidity']:.2f}"
         
-        # Trade URL
-        trade_url = f"{DEX_URL}?inputCurrency={pair['token_address']}&outputCurrency={pair['stable_address']}"
-        
-        # Pair info - clean layout without excessive lines
-        message += f"{medal} <b>{idx}. {pair['pair_name']}</b>\n"
-        message += f"   Price: <code>{price_str}</code>\n"
-        message += f"   Liquidity: <code>{liq_str}</code>\n"
-        
-        # Optional: add reserve info (more professional)
+        # Format reserves
         token_reserve_fmt = format_number(pair['token_reserve'])
         stable_reserve_fmt = format_number(pair['stable_reserve'])
-        message += f"   Reserve: {token_reserve_fmt} {pair['token_symbol']} | {stable_reserve_fmt} {pair['stable_symbol']}\n"
         
-        message += f"   <a href='{trade_url}'>➡️ Trade Now</a>\n\n"
+        trade_url = f"{DEX_URL}?inputCurrency={pair['token_address']}&outputCurrency={pair['stable_address']}"
+        
+        message += f"<b>{idx}. {pair['pair_name']}</b>\n"
+        message += f"   💰 Price: <code>{price_str}</code>\n"
+        message += f"   💧 Liquidity: <code>{liq_str}</code>\n"
+        message += f"   📊 Reserves: {token_reserve_fmt} {pair['token_symbol']} / {stable_reserve_fmt} {pair['stable_symbol']}\n"
+        message += f"   🔗 <a href='{trade_url}'>Trade Now</a>\n\n"
     
-    message += "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    
-    # Market summary
+    # Add total liquidity info
     total_liq = sum(p['liquidity'] for p in top_pairs)
-    message += f"📊 Total Liquidity (Top 3): <code>${total_liq:,.2f}</code>\n"
+    message += "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    message += f"📈 <b>Total Liquidity (Top 3):</b> <code>${total_liq:.2f}</code>\n\n"
     message += f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
     message += f"💰 Data RecehDEX jaringan RicheChain"
     
     # Buttons
     keyboard = [
         [InlineKeyboardButton("📊 RecehDEX", url=DEX_URL)],
-        [InlineKeyboardButton("ℹ️ Pair Info", url=PAIR_INFO_URL)],
-        [InlineKeyboardButton("✨ Create Token", url=CREATE_TOKEN_URL)]
+        [InlineKeyboardButton("ℹ️ PairInfo", url=PAIR_INFO_URL)],
+        [InlineKeyboardButton("✨ CreateToken", url=CREATE_TOKEN_URL)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
