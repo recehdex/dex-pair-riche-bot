@@ -16,7 +16,7 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
 
 # ================= ADDRESS =================
 FACTORY_ADDRESS = "0xAeEdf8B9925c6316171f7c2815e387DE596Fa11B"
-USDR_ADDRESS = "0x6dC1bC519a8c861d509351763a6f9aBb6B07b57B"
+USDT_ADDRESS = "0x77D3C50C355Adb3013E115AC4697613507796750"
 WRIC_ADDRESS = "0xEa126036c94Ab6A384A25A70e29E2fE2D4a91e68"
 
 RPC_URL = "https://seed-richechain.com"
@@ -47,7 +47,7 @@ TOKEN_ABI = [
     {"inputs": [], "name": "decimals", "outputs": [{"type": "uint8"}], "stateMutability": "view", "type": "function"}
 ]
 
-STABLE_ADDRESSES = [USDR_ADDRESS.lower(), WRIC_ADDRESS.lower()]
+STABLE_ADDRESSES = [USDT_ADDRESS.lower(), WRIC_ADDRESS.lower()]
 
 def get_token_info(token_address):
     try:
@@ -60,14 +60,14 @@ def is_stable(token_address):
     return token_address.lower() in STABLE_ADDRESSES
 
 def get_stable_type(stable_address):
-    if stable_address.lower() == USDR_ADDRESS.lower():
-        return "USDR"
+    if stable_address.lower() == USDT_ADDRESS.lower():
+        return "USDT"
     elif stable_address.lower() == WRIC_ADDRESS.lower():
         return "WRIC"
     return "Unknown"
 
 def get_ric_price_usd():
-    """Cari harga RIC dari pair WRIC/USDR di factory"""
+    """Cari harga RIC dari pair WRIC/USDT di factory"""
     try:
         factory = w3.eth.contract(address=Web3.to_checksum_address(FACTORY_ADDRESS), abi=FACTORY_ABI)
         total_pairs = factory.functions.allPairsLength().call()
@@ -80,21 +80,21 @@ def get_ric_price_usd():
                 token0 = pair.functions.token0().call().lower()
                 token1 = pair.functions.token1().call().lower()
                 
-                # Cari pair WRIC/USDR
+                # Cari pair WRIC/USDT
                 if (WRIC_ADDRESS.lower() in [token0, token1] and 
-                    USDR_ADDRESS.lower() in [token0, token1]):
+                    USDT_ADDRESS.lower() in [token0, token1]):
                     
                     reserves = pair.functions.getReserves().call()
                     
                     if token0 == WRIC_ADDRESS.lower():
                         wric_reserve = reserves[0] / 1e18
-                        usdr_reserve = reserves[1] / 1e18
+                        usdt_reserve = reserves[1] / 1e18
                     else:
                         wric_reserve = reserves[1] / 1e18
-                        usdr_reserve = reserves[0] / 1e18
+                        usdt_reserve = reserves[0] / 1e18
                     
                     if wric_reserve > 0:
-                        ric_price = usdr_reserve / wric_reserve
+                        ric_price = usdt_reserve / wric_reserve
                         logger.info(f"RIC Price: ${ric_price:.2f}")
                         return ric_price
                         
@@ -166,8 +166,8 @@ def get_top_3_pairs():
                 stable_type = get_stable_type(stable_address)
                 
                 # HITUNG HARGA DALAM USD
-                if stable_type == "USDR":
-                    # Pair TOKEN/USDR - USDR langsung 1:1 USD
+                if stable_type == "USDT":
+                    # Pair TOKEN/USDT - USDT langsung 1:1 USD
                     price_usd = stable_reserve / token_reserve
                     liquidity_usd = stable_reserve * 2
                     
